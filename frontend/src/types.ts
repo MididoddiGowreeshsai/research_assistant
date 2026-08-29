@@ -1,0 +1,17 @@
+export type Phase = 'idle' | 'researching' | 'review' | 'complete' | 'error'
+
+export type NodeName = 'orchestrator' | 'search' | 'summarizer' | 'writer' | 'hitl'
+
+export interface AgentStep {
+  node: NodeName
+  label: string
+  status: 'pending' | 'running' | 'done'
+}
+
+export interface SSEPayload {
+  thread_id?: string
+  node?: NodeName
+  report?: string
+  message?: string
+  sub_questions?: string[]
+}
