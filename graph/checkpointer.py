@@ -1,9 +1,13 @@
 import os
 from contextlib import asynccontextmanager
 
+from core.vector_store import setup_vector_store
+
 
 @asynccontextmanager
 async def make_checkpointer():
+    setup_vector_store()
+
     database_url = os.getenv("DATABASE_URL", "")
     if database_url:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver

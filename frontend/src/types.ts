@@ -1,6 +1,6 @@
 export type Phase = 'idle' | 'researching' | 'review' | 'complete' | 'error'
 
-export type NodeName = 'orchestrator' | 'search' | 'summarizer' | 'writer' | 'hitl'
+export type NodeName = 'rag' | 'orchestrator' | 'search' | 'summarizer' | 'writer' | 'hitl' | 'store_report'
 
 export interface AgentStep {
   node: NodeName
@@ -14,4 +14,5 @@ export interface SSEPayload {
   report?: string
   message?: string
   sub_questions?: string[]
+  rag_hits?: number
 }

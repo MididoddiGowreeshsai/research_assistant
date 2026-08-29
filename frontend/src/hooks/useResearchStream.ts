@@ -2,10 +2,12 @@ import { useCallback, useRef, useState } from 'react'
 import type { AgentStep, NodeName, Phase, SSEPayload } from '../types'
 
 const PIPELINE: { node: NodeName; label: string }[] = [
+  { node: 'rag', label: 'RAG Retrieval' },
   { node: 'orchestrator', label: 'Orchestrator' },
   { node: 'search', label: 'Web Search' },
   { node: 'summarizer', label: 'Summarizer' },
   { node: 'writer', label: 'Writer' },
+  { node: 'store_report', label: 'Save to Memory' },
 ]
 
 function initSteps(): AgentStep[] {
@@ -18,6 +20,7 @@ export function useResearchStream() {
   const [report, setReport] = useState('')
   const [threadId, setThreadId] = useState('')
   const [subQuestions, setSubQuestions] = useState<string[]>([])
+  const [ragHits, setRagHits] = useState(0)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
 
@@ -37,6 +40,9 @@ export function useResearchStream() {
           setStepStatus(payload.node, 'done')
           if (payload.node === 'orchestrator' && payload.sub_questions?.length) {
             setSubQuestions(payload.sub_questions)
+          }
+          if (payload.node === 'rag' && payload.rag_hits !== undefined) {
+            setRagHits(payload.rag_hits)
           }
         }
         break
@@ -88,6 +94,7 @@ export function useResearchStream() {
     setSteps(initSteps())
     setReport('')
     setSubQuestions([])
+    setRagHits(0)
     setError('')
 
     try {
@@ -130,5 +137,5 @@ export function useResearchStream() {
     }
   }, [threadId, readStream])
 
-  return { phase, steps, report, threadId, subQuestions, error, startResearch, submitFeedback }
+  return { phase, steps, report, threadId, subQuestions, ragHits, error, startResearch, submitFeedback }
 }

@@ -10,7 +10,7 @@ from api.schemas import ResearchRequest, ResumeRequest
 
 router = APIRouter()
 
-PIPELINE_NODES = {"orchestrator", "search", "summarizer", "writer"}
+PIPELINE_NODES = {"rag", "orchestrator", "search", "summarizer", "writer", "store_report"}
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
@@ -37,6 +37,8 @@ async def event_stream(
                 payload: dict = {"node": node_name, "thread_id": thread_id}
                 if node_name == "orchestrator":
                     payload["sub_questions"] = node_output.get("sub_questions", [])
+                if node_name == "rag":
+                    payload["rag_hits"] = node_output.get("rag_hits", 0)
                 yield sse("node_end", payload)
 
         state = await graph.aget_state(config)
@@ -61,6 +63,8 @@ async def start_research(body: ResearchRequest, request: Request):
         "final_report": None,
         "human_feedback": None,
         "approved": False,
+        "rag_context": None,
+        "rag_hits": 0,
     }
 
     return StreamingResponse(

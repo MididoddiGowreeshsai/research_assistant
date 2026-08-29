@@ -4,15 +4,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from core.vector_store import setup_vector_store
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from graph.builder import build_graph
 
-PIPELINE_NODES = {"orchestrator", "search", "summarizer", "writer"}
+PIPELINE_NODES = {"rag", "orchestrator", "search", "summarizer", "writer", "store_report"}
 
 
 def run_research(topic: str) -> dict:
+    setup_vector_store()
     graph = build_graph(checkpointer=MemorySaver())
     config = {"configurable": {"thread_id": str(uuid.uuid4())}}
 
@@ -24,6 +26,8 @@ def run_research(topic: str) -> dict:
         "final_report": None,
         "human_feedback": None,
         "approved": False,
+        "rag_context": None,
+        "rag_hits": 0,
     }
 
     print(f"\n{'='*60}\nResearch Topic: {topic}\n{'='*60}")
@@ -46,6 +50,10 @@ def run_research(topic: str) -> dict:
                 if node_name == "orchestrator":
                     for i, q in enumerate(node_output.get("sub_questions", []), 1):
                         print(f"  {i}. {q}")
+                if node_name == "rag":
+                    hits = node_output.get("rag_hits", 0)
+                    if hits:
+                        print(f"  Found {hits} relevant past report(s).")
 
         if not interrupted:
             break

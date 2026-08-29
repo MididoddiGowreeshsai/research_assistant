@@ -5,8 +5,20 @@ from graph.state import ResearchState
 def orchestrator_node(state: ResearchState) -> dict:
     llm = get_llm()
     topic = state["topic"]
+    rag_context = state.get("rag_context") or ""
 
-    prompt = f"""You are a research orchestrator. Given the topic below, generate exactly 3 specific sub-questions that together would comprehensively cover this topic.
+    if rag_context:
+        prompt = f"""You are a research orchestrator. Existing knowledge about this topic is provided below.
+Identify exactly 3 specific sub-questions that represent GAPS not already covered by the existing knowledge.
+
+Topic: {topic}
+
+Existing Knowledge (already retrieved from past reports):
+{rag_context}
+
+Return ONLY a numbered list of 3 gap-filling sub-questions, one per line. No preamble, no explanation."""
+    else:
+        prompt = f"""You are a research orchestrator. Given the topic below, generate exactly 3 specific sub-questions that together would comprehensively cover this topic.
 
 Topic: {topic}
 

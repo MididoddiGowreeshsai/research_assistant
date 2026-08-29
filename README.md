@@ -1,6 +1,6 @@
 # Multi-Agent Research Assistant
 
-A multi-agent research assistant that takes a topic and returns a structured report — built with **LangGraph**, **Google Gemini**, and **Tavily**. Features human-in-the-loop review, a streaming FastAPI backend, and a React frontend.
+A multi-agent research assistant that takes a topic and returns a structured report — built with **LangGraph**, **Google Gemini**, and **Tavily**. Features a RAG layer with pgvector, human-in-the-loop review, a streaming FastAPI backend, and a React frontend.
 
 ---
 
@@ -11,7 +11,12 @@ User Input (topic)
        │
        ▼
  ┌─────────────┐
- │ Orchestrator│  → Breaks topic into 3 targeted sub-questions (Gemini)
+ │  RAG Agent  │  → Retrieves similar past reports from pgvector (768-dim embeddings)
+ └──────┬──────┘
+        │
+        ▼
+ ┌─────────────┐
+ │ Orchestrator│  → Identifies 3 gap-filling sub-questions (or full coverage if no past reports)
  └──────┬──────┘
         │
         ▼
@@ -26,7 +31,7 @@ User Input (topic)
         │
         ▼
  ┌─────────────┐
- │ Writer Agent│  → Compiles structured markdown report (Gemini)
+ │ Writer Agent│  → Combines past knowledge + new findings into unified report (Gemini)
  └──────┬──────┘
         │
         ▼
@@ -39,6 +44,11 @@ User Input (topic)
        Yes
         │
         ▼
+ ┌──────────────┐
+ │ Store Report │  → Embeds & saves approved report back to pgvector for future retrieval
+ └──────┬───────┘
+        │
+        ▼
   Final Report
 ```
 
@@ -46,10 +56,13 @@ User Input (topic)
 
 ## Features
 
-- **4-agent pipeline** — Orchestrator → Search → Summarizer → Writer
+- **RAG layer** — retrieves similar past approved reports from pgvector (cosine similarity ≥ 0.75) before starting research
+- **Gap-aware orchestrator** — when past reports exist, generates only sub-questions that cover knowledge gaps
+- **Knowledge synthesis** — writer blends existing knowledge + new findings into a unified report
 - **Human-in-the-loop (HITL)** — approve or request changes after each draft via `LangGraph interrupt()`
 - **Iterative revision** — writer receives the previous draft + feedback and produces targeted changes
-- **SSE streaming** — real-time agent progress streamed to the frontend
+- **Auto-persist** — approved reports are embedded and stored back to pgvector for future retrieval
+- **SSE streaming** — real-time agent progress streamed to the frontend (including RAG hit count)
 - **PostgreSQL checkpointing** — HITL state persists across API restarts (falls back to in-memory)
 - **React UI** — two-panel layout: agent status feed + markdown report preview
 
@@ -62,6 +75,8 @@ User Input (topic)
 | Agent orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) |
 | LLM | Google Gemini (`gemini-3.6-flash`) via `langchain-google-genai` |
 | Web search | [Tavily](https://tavily.com) |
+| Embeddings | Google `text-embedding-004` (768-dim) |
+| Vector store | PostgreSQL + pgvector |
 | Backend | FastAPI + SSE streaming |
 | State persistence | PostgreSQL (`langgraph-checkpoint-postgres`) / MemorySaver |
 | Frontend | React 18 + Vite + TypeScript + Tailwind CSS |
@@ -72,21 +87,24 @@ User Input (topic)
 
 ```
 research_assistant/
-├── main.py                   # Terminal entry point (Phase 1 & 2)
+├── main.py                   # Terminal entry point
 ├── requirements.txt
 ├── .env
 ├── agents/
-│   ├── orchestrator.py       # Breaks topic → 3 sub-questions
+│   ├── rag.py                # pgvector similarity retrieval node
+│   ├── orchestrator.py       # Breaks topic → 3 sub-questions (gap-aware)
 │   ├── search.py             # Tavily web search
 │   ├── summarizer.py         # Summarises search results
-│   ├── writer.py             # Compiles / revises report
-│   └── hitl.py               # Human review node (interrupt)
+│   ├── writer.py             # Compiles / revises report (blends RAG + new)
+│   ├── hitl.py               # Human review node (interrupt)
+│   └── store_report.py       # Embeds & saves approved report to pgvector
 ├── graph/
 │   ├── state.py              # ResearchState TypedDict
 │   ├── builder.py            # LangGraph graph construction
 │   └── checkpointer.py       # Async PostgreSQL / MemorySaver setup
 ├── core/
-│   └── llm.py                # Gemini + Tavily initializers
+│   ├── llm.py                # Gemini + Tavily initializers
+│   └── vector_store.py       # pgvector setup, similarity search, insert
 ├── api/
 │   ├── main.py               # FastAPI app + lifespan
 │   ├── schemas.py            # Pydantic models
@@ -113,13 +131,13 @@ research_assistant/
 - Node.js 18+
 - [Google AI Studio API key](https://aistudio.google.com) (free)
 - [Tavily API key](https://tavily.com) (free tier)
-- PostgreSQL (optional — MemorySaver used if not configured)
+- PostgreSQL with pgvector extension (optional — MemorySaver + no RAG used if not configured)
 
 ### 1. Clone & install Python deps
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/research-assistant.git
-cd research-assistant
+git clone https://github.com/MididoddiGowreeshsai/research_assistant.git
+cd research_assistant
 python -m venv venv
 venv\Scripts\activate      # Windows
 # source venv/bin/activate  # macOS/Linux
@@ -138,7 +156,7 @@ Edit `.env`:
 GOOGLE_API_KEY=your_google_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
 
-# Optional: set for persistent HITL state across restarts
+# Optional: enables pgvector RAG + persistent HITL state
 DATABASE_URL=postgresql://user:password@localhost/research_assistant
 ```
 
@@ -154,7 +172,7 @@ cd ..
 
 ## Running
 
-### Terminal mode (Phases 1 & 2 — HITL in terminal)
+### Terminal mode
 
 ```bash
 python main.py
@@ -162,7 +180,7 @@ python main.py
 
 Enter a topic, review the draft, then type `approve` or describe changes.
 
-### Full stack (Phases 3 & 4)
+### Full stack
 
 Open three terminals:
 
@@ -191,7 +209,8 @@ npm run dev
 
 ```
 thread_id        → {"thread_id": "uuid"}
-node_start       → {"node": "orchestrator", "thread_id": "..."}
+node_start       → {"node": "rag", "thread_id": "..."}
+node_end         → {"node": "rag", "rag_hits": 2, "thread_id": "..."}
 node_end         → {"node": "orchestrator", "sub_questions": [...], "thread_id": "..."}
 review_required  → {"thread_id": "...", "report": "markdown string"}
 complete         → {"thread_id": "...", "report": "markdown string"}
@@ -208,6 +227,7 @@ error            → {"thread_id": "...", "message": "..."}
 | 2 | ✅ | HITL with `LangGraph interrupt()` + PostgreSQL checkpointing |
 | 3 | ✅ | FastAPI backend with SSE streaming |
 | 4 | ✅ | React chat UI with agent status feed and report preview panel |
+| 5 | ✅ | RAG layer with pgvector — retrieval, gap analysis, knowledge synthesis, auto-persist |
 
 ---
 
