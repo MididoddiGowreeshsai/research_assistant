@@ -53,13 +53,38 @@ def validate_topic(topic: str) -> None:
 async def with_heartbeat(
     agen: AsyncGenerator[str, None], interval: float = 15
 ) -> AsyncGenerator[str, None]:
-    """Yield ': ping\\n\\n' whenever the inner generator is silent for `interval` seconds."""
-    aiter = agen.__aiter__()
-    while True:
+    """Yield ': ping\\n\\n' when silent for `interval` seconds.
+
+    Runs the inner generator in a background task feeding a queue so it is
+    never cancelled by asyncio.wait_for — only the queue.get() times out.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def _feed() -> None:
         try:
-            chunk = await asyncio.wait_for(aiter.__anext__(), timeout=interval)
-            yield chunk
-        except StopAsyncIteration:
-            break
-        except asyncio.TimeoutError:
-            yield ": ping\n\n"
+            async for chunk in agen:
+                await queue.put(chunk)
+        except Exception as exc:  # noqa: BLE001
+            await queue.put(exc)
+        finally:
+            await queue.put(None)  # sentinel
+
+    task = asyncio.create_task(_feed())
+    try:
+        while True:
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=interval)
+            except asyncio.TimeoutError:
+                yield ": ping\n\n"
+                continue
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
