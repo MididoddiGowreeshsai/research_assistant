@@ -6,12 +6,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
+from api.limits import SSE_HEADERS, check_daily_quota, limiter, validate_topic, with_heartbeat
 from api.schemas import ResearchRequest, ResumeRequest
 
 router = APIRouter()
 
 PIPELINE_NODES = {"rag", "orchestrator", "search", "summarizer", "writer", "store_report"}
-SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
 def sse(event: str, data: dict) -> str:
@@ -50,7 +50,11 @@ async def event_stream(
 
 
 @router.post("/research")
-async def start_research(body: ResearchRequest, request: Request):
+@limiter.limit("3/hour")
+async def start_research(request: Request, body: ResearchRequest):
+    validate_topic(body.topic)
+    check_daily_quota(request.client.host)
+
     graph = request.app.state.graph
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
@@ -68,20 +72,21 @@ async def start_research(body: ResearchRequest, request: Request):
     }
 
     return StreamingResponse(
-        event_stream(graph, initial_state, config, thread_id),
+        with_heartbeat(event_stream(graph, initial_state, config, thread_id)),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
 
 
 @router.post("/research/{thread_id}/resume")
-async def resume_research(thread_id: str, body: ResumeRequest, request: Request):
+@limiter.limit("10/hour")
+async def resume_research(request: Request, thread_id: str, body: ResumeRequest):
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": thread_id}}
     resume_val = {"approved": body.approved, "feedback": body.feedback}
 
     return StreamingResponse(
-        event_stream(graph, Command(resume=resume_val), config, thread_id),
+        with_heartbeat(event_stream(graph, Command(resume=resume_val), config, thread_id)),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )

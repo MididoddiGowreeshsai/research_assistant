@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { AgentStatusFeed } from './components/AgentStatusFeed'
 import { HitlReviewBar } from './components/HitlReviewBar'
 import { ReportPreview } from './components/ReportPreview'
+import { useBackendWake } from './hooks/useBackendWake'
 import { useResearchStream } from './hooks/useResearchStream'
 
 export default function App() {
   const [topic, setTopic] = useState('')
   const { phase, steps, report, subQuestions, error, startResearch, submitFeedback } =
     useResearchStream()
+  const { status: wakeStatus, elapsed } = useBackendWake()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -16,16 +18,31 @@ export default function App() {
 
   const hasReport = report.length > 0
   const isResearching = phase === 'researching'
+  const isWaking = wakeStatus === 'waking'
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-100 overflow-hidden">
+      {/* Cold-start banner — only shown while backend is waking */}
+      {isWaking && (
+        <div className="shrink-0 flex items-center gap-2 border-b border-amber-900/50 bg-amber-950/50 px-6 py-2 text-xs text-amber-300">
+          <span className="animate-pulse">●</span>
+          Backend is waking up on Render — cold starts can take ~30 s.
+          <span className="ml-auto tabular-nums text-amber-500">{elapsed}s</span>
+        </div>
+      )}
+      {wakeStatus === 'unreachable' && (
+        <div className="shrink-0 border-b border-red-900/50 bg-red-950/50 px-6 py-2 text-xs text-red-400">
+          Backend unreachable after 90 s. Check that the Render service is running.
+        </div>
+      )}
+
       {/* Header */}
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-800/60 px-6 py-3">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-xs font-bold select-none">
           R
         </div>
         <span className="text-sm font-semibold tracking-tight">Research Assistant</span>
-        <span className="ml-auto text-xs text-slate-600">LangGraph · Gemini Pro · Tavily</span>
+        <span className="ml-auto text-xs text-slate-600">LangGraph · Gemini · Tavily</span>
       </header>
 
       <div className="flex flex-1 min-h-0">
@@ -40,15 +57,15 @@ export default function App() {
               onChange={e => setTopic(e.target.value)}
               placeholder="e.g. The impact of AI on software engineering jobs"
               rows={4}
-              disabled={isResearching}
+              disabled={isResearching || isWaking}
               className="resize-none rounded-lg border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-shadow"
             />
             <button
               type="submit"
-              disabled={!topic.trim() || isResearching}
+              disabled={!topic.trim() || isResearching || isWaking}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 active:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
             >
-              {isResearching ? 'Researching…' : 'Research →'}
+              {isWaking ? 'Waiting for backend…' : isResearching ? 'Researching…' : 'Research →'}
             </button>
           </form>
 
@@ -65,12 +82,19 @@ export default function App() {
 
         {/* Right Panel */}
         <main className="flex flex-1 flex-col overflow-y-auto p-8">
-          {phase === 'idle' && (
+          {phase === 'idle' && !isWaking && (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <span className="text-4xl select-none">🔬</span>
               <p className="text-sm text-slate-600">
                 Enter a topic to generate a structured research report.
               </p>
+            </div>
+          )}
+
+          {isWaking && phase === 'idle' && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-500" />
+              <p className="text-sm text-slate-500">Waiting for backend… {elapsed}s</p>
             </div>
           )}
 

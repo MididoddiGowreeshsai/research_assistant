@@ -18,7 +18,10 @@ def _vec_str(v: list) -> str:
 
 
 def _connect() -> psycopg.Connection:
-    return psycopg.connect(os.getenv("DATABASE_URL", ""))
+    # Use Neon's direct connection URL (not -pooler) so psycopg3 can use
+    # prepared statements. prepare_threshold=0 disables them anyway for safety.
+    url = os.getenv("DATABASE_URL", "")
+    return psycopg.connect(url, prepare_threshold=0)
 
 
 def setup_vector_store() -> None:

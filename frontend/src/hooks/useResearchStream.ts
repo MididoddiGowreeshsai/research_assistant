@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { apiUrl } from '../lib/api'
 import type { AgentStep, NodeName, Phase, SSEPayload } from '../types'
 
 const PIPELINE: { node: NodeName; label: string }[] = [
@@ -75,6 +76,8 @@ export function useResearchStream() {
       const parts = buffer.split('\n\n')
       buffer = parts.pop() ?? ''
       for (const part of parts) {
+        // skip SSE comment heartbeats (": ping")
+        if (part.startsWith(':')) continue
         const eventMatch = part.match(/^event: (.+)$/m)
         const dataMatch = part.match(/^data: (.+)$/m)
         if (eventMatch && dataMatch) {
@@ -98,7 +101,7 @@ export function useResearchStream() {
     setError('')
 
     try {
-      const res = await fetch('/api/research', {
+      const res = await fetch(apiUrl('/api/research'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic }),
@@ -107,7 +110,7 @@ export function useResearchStream() {
       await readStream(res)
     } catch (e: unknown) {
       if ((e as Error).name !== 'AbortError') {
-        setError('Connection failed. Is the API running on port 8000?')
+        setError('Connection failed. Is the backend running?')
         setPhase('error')
       }
     }
@@ -122,7 +125,7 @@ export function useResearchStream() {
     setSteps(initSteps())
 
     try {
-      const res = await fetch(`/api/research/${threadId}/resume`, {
+      const res = await fetch(apiUrl(`/api/research/${threadId}/resume`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approved, feedback }),
