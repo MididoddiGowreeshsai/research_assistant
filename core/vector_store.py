@@ -1,19 +1,28 @@
 import os
 
-import google.generativeai as genai
 import psycopg
+import requests
 
 VECTOR_DIM = 768
 
+_EMBED_URL = (
+    "https://generativelanguage.googleapis.com/v1/models/"
+    "text-embedding-004:embedContent"
+)
+
 
 def _embed(text: str) -> list:
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    result = genai.embed_content(
-        model="models/text-embedding-004",
-        content=text,
-        task_type="retrieval_document",
+    api_key = os.getenv("GOOGLE_API_KEY", "")
+    resp = requests.post(
+        _EMBED_URL,
+        params={"key": api_key},
+        json={"model": "models/text-embedding-004",
+              "content": {"parts": [{"text": text}]},
+              "taskType": "RETRIEVAL_DOCUMENT"},
+        timeout=30,
     )
-    return result["embedding"]
+    resp.raise_for_status()
+    return resp.json()["embedding"]["values"]
 
 
 def _vec_str(v: list) -> str:
