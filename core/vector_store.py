@@ -1,16 +1,19 @@
 import os
 
+import google.generativeai as genai
 import psycopg
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 VECTOR_DIM = 768
 
 
-def _embedder() -> GoogleGenerativeAIEmbeddings:
-    return GoogleGenerativeAIEmbeddings(
+def _embed(text: str) -> list:
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    result = genai.embed_content(
         model="models/text-embedding-004",
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
+        content=text,
+        task_type="retrieval_document",
     )
+    return result["embedding"]
 
 
 def _vec_str(v: list) -> str:
@@ -49,7 +52,7 @@ def similarity_search(topic: str, threshold: float = 0.75, limit: int = 3) -> li
     if not url:
         return []
     try:
-        vec = _vec_str(_embedder().embed_query(topic))
+        vec = _vec_str(_embed(topic))
         with _connect() as conn:
             rows = conn.execute(
                 """
@@ -73,7 +76,7 @@ def insert_report(topic: str, report_content: str, sub_questions: list) -> None:
     if not url:
         return
     try:
-        vec = _vec_str(_embedder().embed_query(topic))
+        vec = _vec_str(_embed(topic))
         with _connect() as conn:
             conn.execute(
                 """

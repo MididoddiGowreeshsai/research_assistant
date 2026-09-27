@@ -2,7 +2,7 @@ from core.llm import extract_text, get_llm
 from graph.state import ResearchState
 
 
-def writer_node(state: ResearchState) -> dict:
+async def writer_node(state: ResearchState) -> dict:
     llm = get_llm()
     topic = state["topic"]
     summaries = state["summaries"]
@@ -68,5 +68,5 @@ Write the report with:
 Use professional language and markdown formatting."""
 
     print("\n[Writer] Compiling report...")
-    response = llm.invoke(prompt)
+    response = await llm.ainvoke(prompt)
     return {"final_report": extract_text(response), "human_feedback": None}

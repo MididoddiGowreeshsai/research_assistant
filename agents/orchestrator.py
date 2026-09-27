@@ -2,7 +2,7 @@ from core.llm import extract_text, get_llm
 from graph.state import ResearchState
 
 
-def orchestrator_node(state: ResearchState) -> dict:
+async def orchestrator_node(state: ResearchState) -> dict:
     llm = get_llm()
     topic = state["topic"]
     rag_context = state.get("rag_context") or ""
@@ -24,7 +24,7 @@ Topic: {topic}
 
 Return ONLY a numbered list of 3 sub-questions, one per line. No preamble, no explanation."""
 
-    response = llm.invoke(prompt)
+    response = await llm.ainvoke(prompt)
     lines = [l.strip() for l in extract_text(response).strip().splitlines() if l.strip()]
     sub_questions = [l.lstrip("0123456789). ").strip() for l in lines][:3]
 
