@@ -1,4 +1,5 @@
 import os
+import time
 
 import psycopg
 import requests
@@ -6,23 +7,35 @@ import requests
 VECTOR_DIM = 768
 
 _EMBED_URL = (
-    "https://generativelanguage.googleapis.com/v1/models/"
+    "https://generativelanguage.googleapis.com/v1beta/models/"
     "text-embedding-004:embedContent"
 )
 
 
-def _embed(text: str) -> list:
+def _embed(text: str, retries: int = 3) -> list:
     api_key = os.getenv("GOOGLE_API_KEY", "")
-    resp = requests.post(
-        _EMBED_URL,
-        params={"key": api_key},
-        json={"model": "models/text-embedding-004",
-              "content": {"parts": [{"text": text}]},
-              "taskType": "RETRIEVAL_DOCUMENT"},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["embedding"]["values"]
+    last_status = None
+    for attempt in range(retries):
+        resp = requests.post(
+            _EMBED_URL,
+            params={"key": api_key},
+            json={"model": "models/text-embedding-004",
+                  "content": {"parts": [{"text": text}]},
+                  "taskType": "RETRIEVAL_DOCUMENT"},
+            timeout=30,
+        )
+        last_status = resp.status_code
+        if resp.status_code in (429, 503) and attempt < retries - 1:
+            time.sleep(2 ** attempt)
+            continue
+        if not resp.ok:
+            # Raise without the URL so the API key isn't logged
+            raise requests.HTTPError(
+                f"Embedding API error {resp.status_code}: {resp.json().get('error', {}).get('message', 'unknown')}",
+                response=resp,
+            )
+        return resp.json()["embedding"]["values"]
+    raise requests.HTTPError(f"Embedding API error {last_status} after {retries} retries")
 
 
 def _vec_str(v: list) -> str:
